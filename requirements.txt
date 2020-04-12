@@ -1,0 +1,4 @@
+beautifulsoup4==4.9.0
+lxml==4.5.0
+requests==2.23.0
+pathvalidate==2.2.2
