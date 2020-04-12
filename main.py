@@ -22,7 +22,7 @@ class PageWasRedirected(Exception):
 
 
 def download_file(url, filename, content_type, folder=''):
-    response = requests.get(url)
+    response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     if content_type not in response.headers['Content-Type']:
         raise WrongContentType()
@@ -33,9 +33,9 @@ def download_file(url, filename, content_type, folder=''):
 
 
 def parse_book_page(book_id, page_url, args):
-    response = requests.get(page_url)
+    response = requests.get(page_url, allow_redirects=False)
     response.raise_for_status()
-    if any(history_response.is_redirect for history_response in response.history):
+    if response.is_redirect:
         raise PageWasRedirected()
     soup = BeautifulSoup(response.text, 'lxml')
 
