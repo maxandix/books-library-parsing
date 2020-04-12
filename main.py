@@ -50,7 +50,7 @@ def parse_book_page(book_id, page_url, args):
                                                             join(args.dest_folder, IMAGES_DIR))
 
     comments = [comment.text for comment in soup.select('#content .texts .black')]
-    genres = [genre.text for genre in soup.select('#content .d_book a')]
+    genres = [genre.text for genre in soup.select('#content span.d_book a')]
     logger.warning(f'{page_url} Заголовок: {book_title}')
 
     return {
