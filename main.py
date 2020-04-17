@@ -39,7 +39,7 @@ def parse_book_page(book_id, page_url, args):
         raise PageWasRedirected()
     soup = BeautifulSoup(response.text, 'lxml')
 
-    book_title, book_author = map(lambda item: item.strip(), soup.select_one('#content h1').text.split('::'))
+    book_title, book_author = (item.strip() for item in soup.select_one('#content h1').text.split('::'))
     book_url = f'http://tululu.org/txt.php?id={book_id}'
     sanitized_filename = f'{book_id}. {sanitize_filename(book_title)}.txt'
     txt_path = None if args.skip_txt else download_file(book_url, sanitized_filename, 'text/plain',
@@ -47,7 +47,7 @@ def parse_book_page(book_id, page_url, args):
 
     image_url = urljoin(response.url, soup.select_one('#content .bookimage img')['src'])
     image_path = None if args.skip_imgs else download_file(image_url, image_url.split('/')[-1], 'image/',
-                                                            join(args.dest_folder, IMAGES_DIR))
+                                                            folder=join(args.dest_folder, IMAGES_DIR))
 
     comments = [comment.text for comment in soup.select('#content .texts .black')]
     genres = [genre.text for genre in soup.select('#content span.d_book a')]
@@ -81,11 +81,11 @@ def main():
 
     books_info = []
     for page_number in range(args.start_page, args.end_page):
-        response = requests.get(f'http://tululu.org/l55/{page_number}/')
+        response = requests.get(f'http://tululu.org/l55/{page_number}/', allow_redirects=False)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
         for book_a in soup.select('#content .bookimage a'):
-            book_id = book_a['href'].strip('/b')
+            book_id = [segment.strip('b') for segment in book_a['href'].split('/') if segment][-1]
             book_url = urljoin(response.url, book_a['href'])
             try:
                 books_info.append(parse_book_page(book_id, book_url, args))
