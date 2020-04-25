@@ -21,9 +21,15 @@ class PageWasRedirected(Exception):
     pass
 
 
-def download_file(url, filename, content_type, folder=''):
+def request_url(url):
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
+    if response.is_redirect:
+        raise PageWasRedirected()
+    return response
+
+def download_file(url, filename, content_type, folder=''):
+    response = request_url(url)
     if content_type not in response.headers['Content-Type']:
         raise WrongContentType()
     file_path = join(folder, filename)
@@ -33,21 +39,25 @@ def download_file(url, filename, content_type, folder=''):
 
 
 def parse_book_page(book_id, page_url, args):
-    response = requests.get(page_url, allow_redirects=False)
-    response.raise_for_status()
-    if response.is_redirect:
-        raise PageWasRedirected()
+    response = request_url(page_url)
     soup = BeautifulSoup(response.text, 'lxml')
 
-    book_title, book_author = (item.strip() for item in soup.select_one('#content h1').text.split('::'))
+    content_title = soup.select_one('#content h1').text
+    book_title, book_author = (item.strip() for item in content_title.split('::'))
+
     book_url = f'http://tululu.org/txt.php?id={book_id}'
     sanitized_filename = f'{book_id}. {sanitize_filename(book_title)}.txt'
-    txt_path = None if args.skip_txt else download_file(book_url, sanitized_filename, 'text/plain',
-                                                       folder=join(args.dest_folder, BOOKS_DIR))
+    txt_path = None
+    if not args.skip_txt:
+        txt_path = download_file(book_url, sanitized_filename, 'text/plain', folder=join(args.dest_folder, BOOKS_DIR))
 
     image_url = urljoin(response.url, soup.select_one('#content .bookimage img')['src'])
-    image_path = None if args.skip_imgs else download_file(image_url, image_url.split('/')[-1], 'image/',
-                                                            folder=join(args.dest_folder, IMAGES_DIR))
+    image_filename = image_url.split('/')[-1]
+    if image_filename != 'nopic.gif':
+        image_filename = f'{book_id}. {image_filename}'
+    image_path = None
+    if not args.skip_imgs:
+        image_path = download_file(image_url, image_filename, 'image/', folder=join(args.dest_folder, IMAGES_DIR))
 
     comments = [comment.text for comment in soup.select('#content .texts .black')]
     genres = [genre.text for genre in soup.select('#content span.d_book a')]
@@ -81,8 +91,7 @@ def main():
 
     books_info = []
     for page_number in range(args.start_page, args.end_page):
-        response = requests.get(f'http://tululu.org/l55/{page_number}/', allow_redirects=False)
-        response.raise_for_status()
+        response = request_url(f'http://tululu.org/l55/{page_number}/')
         soup = BeautifulSoup(response.text, 'lxml')
         for book_a in soup.select('#content .bookimage a'):
             book_id = [segment.strip('b') for segment in book_a['href'].split('/') if segment][-1]
