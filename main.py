@@ -1,4 +1,5 @@
 import requests
+from requests.exceptions import ReadTimeout, ConnectionError
 from urllib.parse import urljoin
 from pathlib import Path
 from os.path import join
@@ -7,6 +8,7 @@ from pathvalidate import sanitize_filename
 import json
 import argparse
 import logging
+import time
 
 BOOKS_DIR = 'books'
 IMAGES_DIR = 'images'
@@ -22,11 +24,19 @@ class PageWasRedirected(Exception):
 
 
 def request_url(url):
-    response = requests.get(url, allow_redirects=False)
-    response.raise_for_status()
-    if response.is_redirect:
-        raise PageWasRedirected()
-    return response
+    while True:
+        try:
+            response = requests.get(url, allow_redirects=False)
+            response.raise_for_status()
+            if response.is_redirect:
+                raise PageWasRedirected()
+            return response
+        except ReadTimeout:
+            logger.exception('Возник ReadTimeout.', exc_info=False)
+        except ConnectionError:
+            logger.exception('Возник ConnectionError. Проверте подключение.', exc_info=False)
+            time.sleep(60)
+
 
 def download_file(url, filename, content_type, folder=''):
     response = request_url(url)
@@ -91,7 +101,11 @@ def main():
 
     books_info = []
     for page_number in range(args.start_page, args.end_page):
-        response = request_url(f'http://tululu.org/l55/{page_number}/')
+        try:
+            response = request_url(f'http://tululu.org/l55/{page_number}/')
+        except PageWasRedirected:
+            logger.exception(f'Страница {page_number} не существует', exc_info=False)
+
         soup = BeautifulSoup(response.text, 'lxml')
         for book_a in soup.select('#content .bookimage a'):
             book_id = [segment.strip('b') for segment in book_a['href'].split('/') if segment][-1]
@@ -99,9 +113,9 @@ def main():
             try:
                 books_info.append(parse_book_page(book_id, book_url, args))
             except WrongContentType:
-                logger.warning(f'Книга {book_url} не доступна для скачивания')
+                logger.exception(f'Книга {book_url} не доступна для скачивания', exc_info=False)
             except PageWasRedirected:
-                logger.warning(f'Книга {book_url} не существует')
+                logger.exception(f'Книга {book_url} не существует', exc_info=False)
 
     json_path = args.json_path if args.json_path else args.dest_folder
     with open(join(json_path, 'books_info.json'), "w") as my_file:
